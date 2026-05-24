@@ -5,81 +5,76 @@
  *   • CRDT sync (graph XML + strokes) via y-websocket
  *   • Presence channel (cursors, user names, colors) via a lightweight
  *     JSON broadcast layer on the PRESENCE connection
- *
- * Deploy free on Railway / Render / Fly.io:
- *   railway up   (or)   render deploy
- *
- * Local dev:
- *   node server.js        → ws://localhost:1234
+ *   • Owner-based kick (temporary) and ban (room-scoped, until server restart)
  */
 
 const http = require('http');
 const { WebSocketServer, WebSocket } = require('ws');
 
-// ── y-websocket compat shim ──────────────────────────────────────────────────
-// v2.x → bin/utils.cjs  |  v3.x removed bin/ entirely (setupWSConnection gone)
-// Pin to 2.x in package.json; this shim is a safety net only.
 let setupWSConnection;
 try {
   ({ setupWSConnection } = require('y-websocket/bin/utils'));
 } catch {
-  console.error(
-    '[FATAL] y-websocket/bin/utils not found.\n' +
-    '  This server requires y-websocket@2.x.\n' +
-    '  Run:  npm install y-websocket@2.0.4'
-  );
+  console.error('[FATAL] y-websocket/bin/utils not found. Run: npm install y-websocket@2.0.4');
   process.exit(1);
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 1234;
 
-// ── Presence tracking ────────────────────────────────────────────────────────
-// rooms: Map<roomName, Map<clientId, { ws, user }>>
-// ONLY presence connections are tracked here.
-// Yjs CRDT connections are managed entirely by setupWSConnection — they are
-// intentionally NOT added to this map to prevent phantom disconnect/rejoin
-// events when the Yjs socket reconnects after a network blip.
-const rooms = new Map();
+// ── Room state ────────────────────────────────────────────────────────────────
+// rooms    : Map<roomName, Map<clientId, { ws, user }>>
+// roomMeta : Map<roomName, { ownerId: string, bannedIds: Set<string> }>
+const rooms    = new Map();
+const roomMeta = new Map();
 
 function getRoomClients(room) {
   if (!rooms.has(room)) rooms.set(room, new Map());
   return rooms.get(room);
 }
 
+function getRoomMeta(room) {
+  if (!roomMeta.has(room)) roomMeta.set(room, { ownerId: null, bannedIds: new Set() });
+  return roomMeta.get(room);
+}
+
 function broadcastPresence(room, excludeId) {
   const clients = getRoomClients(room);
-  const users = [];
-  for (const [id, { user }] of clients) users.push({ id, ...user });
-  const msg = JSON.stringify({ type: 'presence', users });
+  const meta    = getRoomMeta(room);
+  const users   = [];
+  for (const [id, { user }] of clients) users.push({ id, ...user, isOwner: id === meta.ownerId });
+  const msg = JSON.stringify({ type: 'presence', users, ownerId: meta.ownerId });
   for (const [id, { ws }] of clients) {
-    if (id !== excludeId && ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
-    }
+    if (id !== excludeId && ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
+}
+
+// بيبعت presence للكل بما فيهم الـ sender نفسه (للـ snapshot الأولي)
+function sendPresenceTo(ws, room) {
+  const clients = getRoomClients(room);
+  const meta    = getRoomMeta(room);
+  const users   = [];
+  for (const [id, { user }] of clients) users.push({ id, ...user, isOwner: id === meta.ownerId });
+  if (ws.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({ type: 'presence', users, ownerId: meta.ownerId }));
 }
 
 function broadcastCursor(room, fromId, cursorData) {
   const clients = getRoomClients(room);
   const msg = JSON.stringify({ type: 'cursor', id: fromId, ...cursorData });
   for (const [id, { ws }] of clients) {
-    if (id !== fromId && ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
-    }
+    if (id !== fromId && ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 }
 
-// ── HTTP server (health check for Railway/Render) ────────────────────────────
+// ── HTTP server ───────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
 
   } else if (req.url.startsWith('/join/')) {
-    // Deep-link redirect — munjez:// deep link for the installed app.
     const roomCode = req.url.slice('/join/'.length).split('?')[0].trim();
     if (!roomCode) { res.writeHead(400); res.end('Missing room code'); return; }
-
     const deepLink = `munjez://join/${roomCode}`;
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -102,9 +97,7 @@ const httpServer = http.createServer((req, res) => {
   </style>
   <script>
     window.location.href = ${JSON.stringify(deepLink)};
-    setTimeout(() => {
-      document.getElementById('fallback').style.display = 'block';
-    }, 2000);
+    setTimeout(() => { document.getElementById('fallback').style.display = 'block'; }, 2000);
   </script>
 </head>
 <body>
@@ -121,17 +114,16 @@ const httpServer = http.createServer((req, res) => {
 </html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
-
   } else {
     res.writeHead(404); res.end();
   }
 });
 
-// ── WebSocket server ─────────────────────────────────────────────────────────
+// ── WebSocket server ──────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'ws://localhost');
+  const url        = new URL(req.url, 'ws://localhost');
   const isPresence = url.pathname.startsWith('/presence/');
 
   const room = isPresence
@@ -143,23 +135,29 @@ wss.on('connection', (ws, req) => {
   const userName  = (params.get('name')  || 'Anonymous').slice(0, 40);
   const userColor = (params.get('color') || '#6366f1').slice(0, 20);
 
-  // ── Yjs CRDT connection (/room) ────────────────────────────────────────────
-  // Handed entirely to setupWSConnection. Not tracked in rooms Map at all.
-  // This prevents phantom leave/join events when the Yjs socket auto-reconnects
-  // after a network blip (which happens independently of the presence socket).
+  // ── Yjs CRDT connection ────────────────────────────────────────────────────
   if (!isPresence) {
     setupWSConnection(ws, req, { docName: room, gc: true });
-    return; // ← nothing else to do for this connection
+    return;
   }
 
-  // ── Presence connection (/presence/room) ──────────────────────────────────
-  // All cursor, user-list, and ping/pong logic lives here.
-
+  // ── Presence connection ────────────────────────────────────────────────────
+  const meta    = getRoomMeta(room);
   const clients = getRoomClients(room);
 
-  // If this clientId already has an open presence socket (e.g. page reload
-  // before the old socket's close event fires), gracefully close the old one
-  // so the rooms Map stays consistent.
+  // ── Ban check — رفض الاتصال لو الـ client متحزر ────────────────────────────
+  if (meta.bannedIds.has(clientId)) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'banned', reason: 'You have been banned from this room.' }));
+      ws.close(1008, 'banned');
+    }
+    return;
+  }
+
+  // ── أول واحد يدخل الروم = owner ────────────────────────────────────────────
+  if (!meta.ownerId) meta.ownerId = clientId;
+
+  // استبدل أي connection قديم لنفس الـ clientId
   const existing = clients.get(clientId);
   if (existing && existing.ws.readyState === WebSocket.OPEN) {
     existing.ws.close(1000, 'replaced by new connection');
@@ -170,50 +168,86 @@ wss.on('connection', (ws, req) => {
     user: { name: userName, color: userColor, cursor: null, joinedAt: Date.now() },
   });
 
-  // Send the new client the full current presence snapshot (including itself)
-  const allUsers = [];
-  for (const [id, { user }] of clients) allUsers.push({ id, ...user });
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'presence', users: allUsers }));
-  }
-
-  // Tell everyone else someone joined
+  // ابعت الـ snapshot الكامل للجديد (بما فيه ownerId)
+  sendPresenceTo(ws, room);
+  // وابعت للباقيين إنه انضم
   broadcastPresence(room, clientId);
 
-  // Message handler: cursor updates + heartbeat pings
+  // ── Message handler ────────────────────────────────────────────────────────
   ws.on('message', (data) => {
-    // Only handle text frames (JSON). Ignore anything else.
     const str = typeof data === 'string' ? data : Buffer.isBuffer(data) ? data.toString('utf8') : null;
     if (!str || !str.startsWith('{')) return;
-
     let msg;
     try { msg = JSON.parse(str); } catch { return; }
 
     switch (msg.type) {
+
       case 'cursor': {
         const client = clients.get(clientId);
         if (client) client.user.cursor = { x: msg.x, y: msg.y };
-        broadcastCursor(room, clientId, { x: msg.x, y: msg.y, name: userName, color: userColor, tool: msg.tool, penColor: msg.penColor });
+        broadcastCursor(room, clientId, {
+          x: msg.x, y: msg.y,
+          name: userName, color: userColor,
+          tool: msg.tool, penColor: msg.penColor,
+        });
         break;
       }
-      case 'ping':
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'pong' }));
+
+      // ── Kick: طرد مؤقت — يقدر يرجع ──────────────────────────────────────
+      case 'kick': {
+        if (clientId !== meta.ownerId) break; // بس الـ owner
+        const targetId = msg.targetId;
+        const target   = clients.get(targetId);
+        if (!target) break;
+        if (target.ws.readyState === WebSocket.OPEN) {
+          target.ws.send(JSON.stringify({ type: 'kicked', reason: 'You have been removed from this room.' }));
+          target.ws.close(1008, 'kicked');
         }
+        clients.delete(targetId);
+        broadcastPresence(room, null);
+        console.log(`[kick] owner ${clientId} kicked ${targetId} from room ${room}`);
         break;
-      default:
+      }
+
+      // ── Ban: حظر دائم من الروم دي ────────────────────────────────────────
+      case 'ban': {
+        if (clientId !== meta.ownerId) break; // بس الـ owner
+        const targetId = msg.targetId;
+        meta.bannedIds.add(targetId);
+        const target = clients.get(targetId);
+        if (target) {
+          if (target.ws.readyState === WebSocket.OPEN) {
+            target.ws.send(JSON.stringify({ type: 'banned', reason: 'You have been banned from this room.' }));
+            target.ws.close(1008, 'banned');
+          }
+          clients.delete(targetId);
+          broadcastPresence(room, null);
+        }
+        console.log(`[ban] owner ${clientId} banned ${targetId} from room ${room}`);
         break;
+      }
+
+      case 'ping':
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: 'pong' }));
+        break;
+
+      default: break;
     }
   });
 
   ws.on('close', () => {
-    // Only remove if this is still the current socket for this clientId.
-    // (Avoids removing a replacement socket registered during reconnect.)
     const current = clients.get(clientId);
     if (current && current.ws === ws) {
       clients.delete(clientId);
+      // لو الـ owner خرج — أول واحد في الروم يبقى owner الجديد
+      if (meta.ownerId === clientId) {
+        const next = clients.keys().next().value;
+        meta.ownerId = next || null;
+      }
       if (clients.size === 0) {
         rooms.delete(room);
+        roomMeta.delete(room);
       } else {
         broadcastPresence(room, clientId);
       }
