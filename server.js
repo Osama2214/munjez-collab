@@ -39,14 +39,14 @@ function getRoomMeta(room) {
   return roomMeta.get(room);
 }
 
-function broadcastPresence(room, excludeId) {
+function broadcastPresence(room) {
   const clients = getRoomClients(room);
   const meta    = getRoomMeta(room);
   const users   = [];
   for (const [id, { user }] of clients) users.push({ id, ...user, isOwner: id === meta.ownerId });
   const msg = JSON.stringify({ type: 'presence', users, ownerId: meta.ownerId });
-  for (const [id, { ws }] of clients) {
-    if (id !== excludeId && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  for (const [, { ws }] of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 }
 
@@ -451,7 +451,7 @@ wss.on('connection', (ws, req) => {
   // ابعت الـ snapshot الكامل للجديد (بما فيه ownerId)
   sendPresenceTo(ws, room);
   // وابعت للباقيين إنه انضم
-  broadcastPresence(room, clientId);
+  broadcastPresence(room);
 
   // ── Message handler ────────────────────────────────────────────────────────
   ws.on('message', (data) => {
@@ -484,7 +484,7 @@ wss.on('connection', (ws, req) => {
           target.ws.close(1008, 'kicked');
         }
         clients.delete(targetId);
-        broadcastPresence(room, null);
+        broadcastPresence(room);
         console.log(`[kick] owner ${clientId} kicked ${targetId} from room ${room}`);
         break;
       }
@@ -501,7 +501,7 @@ wss.on('connection', (ws, req) => {
             target.ws.close(1008, 'banned');
           }
           clients.delete(targetId);
-          broadcastPresence(room, null);
+          broadcastPresence(room);
         }
         console.log(`[ban] owner ${clientId} banned ${targetId} from room ${room}`);
         break;
@@ -529,7 +529,7 @@ wss.on('connection', (ws, req) => {
         rooms.delete(room);
         roomMeta.delete(room);
       } else {
-        broadcastPresence(room, clientId);
+        broadcastPresence(room);
       }
     }
   });
