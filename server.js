@@ -330,13 +330,17 @@ const httpServer = http.createServer((req, res) => {
     #fallback { display: none; }
   </style>
   <script>
-    window.location.href = ${JSON.stringify(deepLink)};
+    // نستنى شوية عشان الصفحة تتعرض الأول، ثم نعمل redirect
+    setTimeout(() => {
+      window.location.href = ${JSON.stringify(deepLink)};
+    }, 800);
+    // بعد ثانيتين لو التطبيق ما اتفتحش — نظهر الـ fallback
     setTimeout(() => {
       const autoMsg  = document.getElementById('auto-msg');
       const fallback = document.getElementById('fallback');
       if (autoMsg)  autoMsg.style.display  = 'none';
       if (fallback) fallback.style.display = 'block';
-    }, 2000);
+    }, 2500);
   </script>
 </head>
 <body>
