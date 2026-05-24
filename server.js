@@ -81,34 +81,318 @@ const httpServer = http.createServer((req, res) => {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Opening Munjez…</title>
+  <title>Join Whiteboard — Munjez</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;
-         background:#0b1020;font-family:system-ui,sans-serif;color:#e2e8f0;text-align:center;padding:24px}
-    .card{background:#131929;border:1px solid #1e2d45;border-radius:20px;padding:40px 32px;max-width:400px;width:100%}
-    h1{font-size:22px;font-weight:700;margin-bottom:8px}
-    p{color:#71717a;font-size:14px;line-height:1.6;margin-bottom:24px}
-    .btn{display:inline-block;background:#6366f1;color:#fff;border-radius:12px;
-         padding:12px 28px;font-size:15px;font-weight:600;text-decoration:none;
-         box-shadow:0 4px 16px #6366f155}
-    .code{font-family:monospace;font-size:12px;color:#6366f1;margin-top:20px;
-          background:#6366f111;border-radius:8px;padding:8px 14px;word-break:break-all}
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #080c18;
+      --surface: #0f1526;
+      --border: #1c2640;
+      --accent: #6366f1;
+      --accent-glow: #6366f133;
+      --accent-soft: #6366f118;
+      --text: #e8eaf0;
+      --muted: #5a6480;
+      --muted2: #8892aa;
+      --success: #10b981;
+      --radius: 18px;
+    }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text);
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* Radial glow behind card */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, #6366f114 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px 32px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px #ffffff06 inset;
+      animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+
+    /* Top accent line */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 32px; right: 32px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px var(--accent-glow);
+      flex-shrink: 0;
+    }
+
+    .logo-icon svg { display: block; }
+
+    .logo-text { line-height: 1; }
+    .logo-text .app-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+    .logo-text .app-sub  { font-size: 12px; color: var(--muted2); margin-top: 3px; }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 24px;
+    }
+
+    /* Status pill */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent-soft);
+      border: 1px solid #6366f128;
+      border-radius: 100px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a5b4fc;
+      margin-bottom: 20px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.8s ease-in-out infinite;
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted2);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    /* Room code chip */
+    .room-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #6366f10d;
+      border: 1.5px solid #6366f128;
+      border-radius: 12px;
+      padding: 11px 14px;
+      margin-bottom: 20px;
+    }
+
+    .room-chip-icon { color: var(--accent); flex-shrink: 0; }
+
+    .room-chip-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .room-chip-code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #a5b4fc;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Open button */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 13px;
+      padding: 14px 0;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      box-shadow: 0 4px 20px var(--accent-glow);
+      transition: opacity 0.15s, transform 0.15s;
+      margin-bottom: 14px;
+    }
+
+    .btn:hover  { opacity: 0.88; transform: translateY(-1px); }
+    .btn:active { opacity: 1;    transform: translateY(0); }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .hint strong { color: var(--muted2); font-weight: 600; }
+
+    /* Spinner shown while redirecting */
+    #auto-msg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted2);
+      margin-bottom: 16px;
+    }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #fallback { display: none; }
   </style>
   <script>
     window.location.href = ${JSON.stringify(deepLink)};
-    setTimeout(() => { document.getElementById('fallback').style.display = 'block'; }, 2000);
+    setTimeout(() => {
+      document.getElementById('auto-msg').style.display = 'none';
+      document.getElementById('fallback').style.display = 'block';
+    }, 2000);
   </script>
 </head>
 <body>
   <div class="card">
-    <h1>🚀 Opening Munjez…</h1>
-    <p>You'll be taken to the shared whiteboard automatically.</p>
-    <div id="fallback" style="display:none">
-      <p>If the app didn't open, make sure <strong>Munjez</strong> is installed, then tap the button below.</p>
-      <a class="btn" href="${deepLink}">Open in Munjez</a>
-      <div class="code">${roomCode}</div>
+
+    <div class="logo-row">
+      <div class="logo-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <path d="M8 12h8M12 8v8"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <div class="app-name">Munjez</div>
+        <div class="app-sub">Collaborative Whiteboard</div>
+      </div>
     </div>
+
+    <div class="divider"></div>
+
+    <div class="status-pill">
+      <span class="status-dot"></span>
+      You've been invited
+    </div>
+
+    <h1>Join the Whiteboard</h1>
+    <p class="subtitle">Someone shared a board with you. Open the app to start collaborating in real time.</p>
+
+    <div class="room-chip">
+      <span class="room-chip-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+        </svg>
+      </span>
+      <div style="flex:1;overflow:hidden">
+        <div class="room-chip-label">Room Code</div>
+        <div class="room-chip-code" title="${roomCode}">${roomCode}</div>
+      </div>
+    </div>
+
+    <div id="auto-msg">
+      <span class="spinner"></span>
+      Opening Munjez automatically…
+    </div>
+
+    <div id="fallback">
+      <a class="btn" href="${deepLink}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/>
+          <polyline points="10 17 15 12 10 7"/>
+          <line x1="15" y1="12" x2="3" y2="12"/>
+        </svg>
+        Open in Munjez
+      </a>
+      <p class="hint">App didn't open? Make sure <strong>Munjez</strong> is installed on your device.</p>
+    </div>
+
   </div>
 </body>
 </html>`;
