@@ -9,6 +9,8 @@
  */
 
 const http = require('http');
+const fs   = require('fs');
+const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 let setupWSConnection;
@@ -68,7 +70,15 @@ function broadcastCursor(room, fromId, cursorData) {
 
 // ── HTTP server ───────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
-  if (req.url === '/health') {
+  if (req.url === '/icon.webp') {
+    const iconPath = path.join(__dirname, 'icon.webp');
+    fs.readFile(iconPath, (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public,max-age=86400' });
+      res.end(data);
+    });
+
+  } else if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
 
@@ -149,10 +159,9 @@ const httpServer = http.createServer((req, res) => {
     /* ── LOGO ROW ── */
     .logo-row{display:flex;align-items:center;gap:12px;margin-bottom:28px;animation:fade-up .7s ease both;animation-delay:.1s}
     .logo-icon{
-      width:46px;height:46px;border-radius:13px;
-      background:linear-gradient(135deg,var(--primary),#6d28d9);
-      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      width:46px;height:46px;border-radius:13px;flex-shrink:0;
       box-shadow:0 0 28px var(--primary-glow);
+      overflow:hidden;
     }
     .logo-text .app-name{font-size:17px;font-weight:800;letter-spacing:-.3px;line-height:1}
     .logo-text .app-sub{font-size:12px;color:var(--muted);margin-top:3px}
@@ -275,10 +284,7 @@ const httpServer = http.createServer((req, res) => {
   <div class="card">
     <div class="logo-row">
       <div class="logo-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="3"/>
-          <path d="M8 12h8M12 8v8"/>
-        </svg>
+        <img src="/icon.webp" width="46" height="46" alt="Munjez" style="border-radius:13px;display:block;object-fit:cover"/>
       </div>
       <div class="logo-text">
         <div class="app-name">Munjez</div>
