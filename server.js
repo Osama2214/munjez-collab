@@ -83,258 +83,179 @@ const httpServer = http.createServer((req, res) => {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Join Whiteboard — Munjez</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --bg: #080c18;
-      --surface: #0f1526;
-      --border: #1c2640;
-      --accent: #6366f1;
-      --accent-glow: #6366f133;
-      --accent-soft: #6366f118;
-      --text: #e8eaf0;
-      --muted: #5a6480;
-      --muted2: #8892aa;
-      --success: #10b981;
-      --radius: 18px;
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --bg:#070c18;--surface:#0c1223;--card:#101827;
+      --border:#1a2d4a;--border-h:rgba(124,58,237,.5);
+      --primary:#7c3aed;--primary-h:#6d28d9;--primary-glow:rgba(124,58,237,.35);
+      --accent:#a78bfa;--text:#e2e8f0;--muted:#7c8fa6;--dim:#3a4a60;
+      --green:#10b981;--r:14px;
+    }
+    html{scroll-behavior:smooth}
+    body{
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+      background:var(--bg);color:var(--text);
+      min-height:100dvh;display:flex;align-items:center;justify-content:center;
+      padding:24px;overflow:hidden;position:relative;
     }
 
-    body {
-      min-height: 100dvh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg);
-      font-family: 'Inter', system-ui, sans-serif;
-      color: var(--text);
-      padding: 20px;
-      overflow: hidden;
+    /* ── CANVAS particles ── */
+    #particles{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55}
+
+    /* ── MOUSE GLOW ── */
+    .mouse-glow{
+      position:fixed;inset:0;z-index:1;pointer-events:none;
+      background:radial-gradient(600px circle at var(--mx,50%) var(--my,50%),rgba(124,58,237,.07),transparent 40%);
     }
 
-    /* Background grid */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(var(--border) 1px, transparent 1px),
-        linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 40px 40px;
-      opacity: 0.35;
-      pointer-events: none;
+    /* ── AMBIENT ORBS ── */
+    .orb{position:fixed;border-radius:50%;filter:blur(80px);pointer-events:none;animation:float-orb 8s ease-in-out infinite}
+    .orb1{width:500px;height:500px;background:rgba(124,58,237,.11);top:-150px;left:-150px;animation-delay:0s}
+    .orb2{width:350px;height:350px;background:rgba(99,102,241,.09);bottom:-100px;right:-100px;animation-delay:-3s}
+    .orb3{width:250px;height:250px;background:rgba(168,85,247,.07);top:50%;left:65%;animation-delay:-5s}
+    @keyframes float-orb{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(20px,-20px) scale(1.05)}}
+
+    /* ── DOT GRID ── */
+    .dot-grid{
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      background-image:radial-gradient(circle,rgba(255,255,255,.03) 1px,transparent 1px);
+      background-size:28px 28px;
+      mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,black 0%,transparent 100%);
     }
 
-    /* Radial glow behind card */
-    body::after {
-      content: '';
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, #6366f114 0%, transparent 70%);
-      pointer-events: none;
+    /* ── CARD ── */
+    .card{
+      position:relative;z-index:10;
+      background:rgba(12,18,35,.9);
+      border:1px solid var(--border);
+      border-radius:20px;
+      padding:40px 36px 36px;
+      max-width:440px;width:100%;
+      box-shadow:0 40px 100px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04) inset;
+      backdrop-filter:blur(24px);
+      animation:slide-up .6s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    @keyframes slide-up{from{opacity:0;transform:translateY(28px) scale(0.96)}to{opacity:1;transform:none}}
+
+    /* top accent line */
+    .card::before{
+      content:'';position:absolute;top:0;left:36px;right:36px;height:1px;
+      background:linear-gradient(90deg,transparent,var(--primary),transparent);
     }
 
-    .card {
-      position: relative;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 36px 32px 32px;
-      max-width: 420px;
-      width: 100%;
-      box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px #ffffff06 inset;
-      animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both;
+    /* ── LOGO ROW ── */
+    .logo-row{display:flex;align-items:center;gap:12px;margin-bottom:28px;animation:fade-up .7s ease both;animation-delay:.1s}
+    .logo-icon{
+      width:46px;height:46px;border-radius:13px;
+      background:linear-gradient(135deg,var(--primary),#6d28d9);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      box-shadow:0 0 28px var(--primary-glow);
+    }
+    .logo-text .app-name{font-size:17px;font-weight:800;letter-spacing:-.3px;line-height:1}
+    .logo-text .app-sub{font-size:12px;color:var(--muted);margin-top:3px}
+
+    /* ── DIVIDER ── */
+    .divider{height:1px;background:var(--border);margin-bottom:28px}
+
+    /* ── BADGE ── */
+    .badge{
+      display:inline-flex;align-items:center;gap:8px;
+      background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);
+      color:var(--accent);padding:6px 16px;border-radius:100px;
+      font-size:12px;font-weight:600;margin-bottom:20px;
+      animation:fade-up .7s ease both;animation-delay:.2s;
+    }
+    .badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:blink 2.2s infinite;box-shadow:0 0 6px var(--accent)}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+    /* ── HEADING ── */
+    h1{
+      font-size:28px;font-weight:900;letter-spacing:-.6px;line-height:1.15;
+      margin-bottom:10px;
+      background:linear-gradient(140deg,#c4b5fd 0%,#8b5cf6 40%,#a78bfa 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      animation:fade-up .7s ease both;animation-delay:.25s;
+    }
+    .subtitle{
+      font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:28px;
+      animation:fade-up .7s ease both;animation-delay:.3s;
     }
 
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0)   scale(1); }
+    /* ── ROOM CHIP ── */
+    .room-chip{
+      display:flex;align-items:center;gap:12px;
+      background:rgba(124,58,237,.07);
+      border:1.5px solid rgba(124,58,237,.22);
+      border-radius:12px;padding:13px 16px;margin-bottom:24px;
+      transition:border-color .2s,background .2s;
+      animation:fade-up .7s ease both;animation-delay:.35s;
+    }
+    .room-chip:hover{border-color:rgba(124,58,237,.45);background:rgba(124,58,237,.12)}
+    .room-chip-icon{color:var(--accent);flex-shrink:0}
+    .room-chip-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+    .room-chip-code{
+      font-family:'JetBrains Mono','Fira Code',monospace;
+      font-size:14px;font-weight:700;color:var(--accent);
+      letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      margin-top:2px;
     }
 
-    /* Top accent line */
-    .card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 32px; right: 32px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    /* ── AUTO MSG ── */
+    #auto-msg{
+      display:flex;align-items:center;justify-content:center;gap:9px;
+      font-size:13px;color:var(--muted);margin-bottom:18px;
+      animation:fade-up .7s ease both;animation-delay:.4s;
     }
-
-    .logo-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 28px;
+    .spinner{
+      width:15px;height:15px;
+      border:2px solid var(--border);border-top-color:var(--primary);
+      border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0;
     }
+    @keyframes spin{to{transform:rotate(360deg)}}
 
-    .logo-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 13px;
-      background: var(--accent);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 20px var(--accent-glow);
-      flex-shrink: 0;
+    /* ── FALLBACK ── */
+    #fallback{display:none;animation:fade-up .4s ease both}
+
+    /* ── BUTTON ── */
+    .btn{
+      display:flex;align-items:center;justify-content:center;gap:9px;
+      width:100%;background:var(--primary);color:#fff;
+      text-decoration:none;border-radius:12px;padding:15px 0;
+      font-size:15px;font-weight:700;letter-spacing:-.01em;
+      box-shadow:0 0 48px var(--primary-glow);
+      transition:background .2s,transform .2s,box-shadow .2s;
+      position:relative;overflow:hidden;margin-bottom:16px;
     }
-
-    .logo-icon svg { display: block; }
-
-    .logo-text { line-height: 1; }
-    .logo-text .app-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
-    .logo-text .app-sub  { font-size: 12px; color: var(--muted2); margin-top: 3px; }
-
-    .divider {
-      height: 1px;
-      background: var(--border);
-      margin-bottom: 24px;
+    .btn::before{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(135deg,rgba(255,255,255,.15) 0%,transparent 60%);
+      opacity:0;transition:opacity .2s;
     }
+    .btn:hover{background:var(--primary-h);transform:translateY(-2px);box-shadow:0 0 72px rgba(124,58,237,.6)}
+    .btn:hover::before{opacity:1}
+    .btn:active{transform:none}
+    .btn svg{animation:bounce-dl 1.2s ease-in-out infinite}
+    @keyframes bounce-dl{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
 
-    /* Status pill */
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      background: var(--accent-soft);
-      border: 1px solid #6366f128;
-      border-radius: 100px;
-      padding: 5px 12px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #a5b4fc;
-      margin-bottom: 20px;
+    /* ── HINT ── */
+    .hint{font-size:12px;color:var(--dim);text-align:center;line-height:1.7}
+    .hint strong{color:var(--muted);font-weight:600}
+
+    /* ── FOOTER NOTE ── */
+    .footer-note{
+      margin-top:24px;padding-top:20px;border-top:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      font-size:11.5px;color:var(--dim);
     }
+    .footer-note span{width:5px;height:5px;background:var(--green);border-radius:50%;display:inline-block;box-shadow:0 0 6px var(--green)}
 
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.8s ease-in-out infinite;
-      box-shadow: 0 0 6px var(--accent);
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: 0.5; transform: scale(0.8); }
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      line-height: 1.2;
-      margin-bottom: 8px;
-    }
-
-    .subtitle {
-      font-size: 13px;
-      color: var(--muted2);
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
-
-    /* Room code chip */
-    .room-chip {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #6366f10d;
-      border: 1.5px solid #6366f128;
-      border-radius: 12px;
-      padding: 11px 14px;
-      margin-bottom: 20px;
-    }
-
-    .room-chip-icon { color: var(--accent); flex-shrink: 0; }
-
-    .room-chip-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .room-chip-code {
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      font-size: 13px;
-      font-weight: 700;
-      color: #a5b4fc;
-      letter-spacing: 0.03em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Open button */
-    .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      background: var(--accent);
-      color: #fff;
-      text-decoration: none;
-      border-radius: 13px;
-      padding: 14px 0;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      box-shadow: 0 4px 20px var(--accent-glow);
-      transition: opacity 0.15s, transform 0.15s;
-      margin-bottom: 14px;
-    }
-
-    .btn:hover  { opacity: 0.88; transform: translateY(-1px); }
-    .btn:active { opacity: 1;    transform: translateY(0); }
-
-    .hint {
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      line-height: 1.6;
-    }
-
-    .hint strong { color: var(--muted2); font-weight: 600; }
-
-    /* Spinner shown while redirecting */
-    #auto-msg {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--muted2);
-      margin-bottom: 16px;
-    }
-
-    .spinner {
-      width: 14px; height: 14px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      flex-shrink: 0;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    #fallback { display: none; }
+    @keyframes fade-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
   </style>
   <script>
-    // نستنى شوية عشان الصفحة تتعرض الأول، ثم نعمل redirect
-    setTimeout(() => {
-      window.location.href = ${JSON.stringify(deepLink)};
-    }, 800);
-    // بعد ثانيتين لو التطبيق ما اتفتحش — نظهر الـ fallback
+    setTimeout(() => { window.location.href = ${JSON.stringify(deepLink)}; }, 800);
     setTimeout(() => {
       const autoMsg  = document.getElementById('auto-msg');
       const fallback = document.getElementById('fallback');
@@ -344,11 +265,17 @@ const httpServer = http.createServer((req, res) => {
   </script>
 </head>
 <body>
-  <div class="card">
+  <div class="mouse-glow" id="mglow"></div>
+  <div class="dot-grid"></div>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+  <canvas id="particles"></canvas>
 
+  <div class="card">
     <div class="logo-row">
       <div class="logo-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="3"/>
           <path d="M8 12h8M12 8v8"/>
         </svg>
@@ -361,8 +288,8 @@ const httpServer = http.createServer((req, res) => {
 
     <div class="divider"></div>
 
-    <div class="status-pill">
-      <span class="status-dot"></span>
+    <div class="badge">
+      <span class="badge-dot"></span>
       You've been invited
     </div>
 
@@ -371,7 +298,7 @@ const httpServer = http.createServer((req, res) => {
 
     <div class="room-chip">
       <span class="room-chip-icon">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <rect x="2" y="7" width="20" height="14" rx="2"/>
           <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
         </svg>
@@ -399,7 +326,56 @@ const httpServer = http.createServer((req, res) => {
       <p class="hint">App didn't open? Make sure <strong>Munjez</strong> is installed on your device.</p>
     </div>
 
+    <div class="footer-note">
+      <span></span>
+      Secure real-time collaboration
+    </div>
   </div>
+
+  <script>
+    // ── Mouse glow ──
+    var mglow = document.getElementById('mglow');
+    document.addEventListener('mousemove', function(e){
+      mglow.style.setProperty('--mx', e.clientX + 'px');
+      mglow.style.setProperty('--my', e.clientY + 'px');
+    });
+
+    // ── Particles ──
+    (function(){
+      var canvas = document.getElementById('particles');
+      var ctx = canvas.getContext('2d');
+      var W, H, pts = [];
+      function resize(){
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+      for(var i=0;i<55;i++){
+        pts.push({
+          x:Math.random()*1000,y:Math.random()*1000,
+          vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,
+          r:Math.random()*1.6+.4,
+          a:Math.random()
+        });
+      }
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+        for(var i=0;i<pts.length;i++){
+          var p=pts[i];
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+          if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+          ctx.beginPath();
+          ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+          ctx.fillStyle='rgba(167,139,250,'+p.a+')';
+          ctx.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+  </script>
 </body>
 </html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
