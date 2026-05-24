@@ -70,7 +70,15 @@ function broadcastCursor(room, fromId, cursorData) {
 
 // ── HTTP server ───────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
-  if (req.url === '/icon.webp') {
+  if (req.url === '/favicon.ico') {
+    const iconPath = path.join(__dirname, 'icon.webp');
+    fs.readFile(iconPath, (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public,max-age=86400' });
+      res.end(data);
+    });
+
+  } else if (req.url === '/icon.webp') {
     const iconPath = path.join(__dirname, 'icon.webp');
     fs.readFile(iconPath, (err, data) => {
       if (err) { res.writeHead(404); res.end(); return; }
