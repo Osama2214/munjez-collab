@@ -332,8 +332,10 @@ const httpServer = http.createServer((req, res) => {
   <script>
     window.location.href = ${JSON.stringify(deepLink)};
     setTimeout(() => {
-      document.getElementById('auto-msg').style.display = 'none';
-      document.getElementById('fallback').style.display = 'block';
+      const autoMsg  = document.getElementById('auto-msg');
+      const fallback = document.getElementById('fallback');
+      if (autoMsg)  autoMsg.style.display  = 'none';
+      if (fallback) fallback.style.display = 'block';
     }, 2000);
   </script>
 </head>
