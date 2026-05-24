@@ -193,7 +193,7 @@ wss.on('connection', (ws, req) => {
       case 'cursor': {
         const client = clients.get(clientId);
         if (client) client.user.cursor = { x: msg.x, y: msg.y };
-        broadcastCursor(room, clientId, { x: msg.x, y: msg.y, name: userName, color: userColor });
+        broadcastCursor(room, clientId, { x: msg.x, y: msg.y, name: userName, color: userColor, tool: msg.tool, penColor: msg.penColor });
         break;
       }
       case 'ping':
