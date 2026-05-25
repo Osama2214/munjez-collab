@@ -24,10 +24,12 @@ try {
 const PORT = process.env.PORT || 1234;
 
 // ── Room state ────────────────────────────────────────────────────────────────
-// rooms    : Map<roomName, Map<clientId, { ws, user }>>
-// roomMeta : Map<roomName, { ownerId: string, bannedIds: Set<string>, kickedIds: Set<string> }>
+// rooms      : Map<roomName, Map<clientId, { ws, user }>>
+// roomMeta   : Map<roomName, { ownerId: string, bannedIds: Set<string>, kickedIds: Set<string> }>
+// roomBans   : Map<roomName, Set<clientId>>  ← بتفضل حتى لو الروم اتفرغت
 const rooms    = new Map();
 const roomMeta = new Map();
+const roomBans = new Map(); // persistent bans — مش بتتمسح لما الروم تتفرغ
 
 function getRoomClients(room) {
   if (!rooms.has(room)) rooms.set(room, new Map());
@@ -35,7 +37,11 @@ function getRoomClients(room) {
 }
 
 function getRoomMeta(room) {
-  if (!roomMeta.has(room)) roomMeta.set(room, { ownerId: null, bannedIds: new Set(), kickedIds: new Set() });
+  if (!roomMeta.has(room)) {
+    // استرجع الـ bans المحفوظة لو موجودة
+    const existingBans = roomBans.get(room) || new Set();
+    roomMeta.set(room, { ownerId: null, bannedIds: existingBans, kickedIds: new Set() });
+  }
   return roomMeta.get(room);
 }
 
@@ -444,8 +450,19 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  // ── أول واحد يدخل الروم = owner ────────────────────────────────────────────
-  if (!meta.ownerId) meta.ownerId = clientId;
+  // ── أول واحد يدخل الروم = owner — بس مش لو اتـ kick قبل كده ────────────────
+  if (!meta.ownerId && !meta.kickedIds.has(clientId)) meta.ownerId = clientId;
+
+  // لو فضل الروم من غير owner (مثلاً الـ kicked user رجع وهو لوحده)
+  // وفيه حد تاني — خليه owner
+  if (!meta.ownerId) {
+    for (const [id] of clients) {
+      if (!meta.kickedIds.has(id)) {
+        meta.ownerId = id;
+        break;
+      }
+    }
+  }
 
   // استبدل أي connection قديم لنفس الـ clientId
   const existing = clients.get(clientId);
@@ -519,6 +536,9 @@ wss.on('connection', (ws, req) => {
         if (clientId !== meta.ownerId) break; // بس الـ owner
         const targetId = msg.targetId;
         meta.bannedIds.add(targetId);
+        // احفظ الـ ban في الـ persistent store فوراً
+        if (!roomBans.has(room)) roomBans.set(room, new Set());
+        roomBans.get(room).add(targetId);
         const target = clients.get(targetId);
         if (target) {
           // شيل الـ user من الروم فوراً وابعت presence محدث للكل
@@ -553,12 +573,22 @@ wss.on('connection', (ws, req) => {
     const current = clients.get(clientId);
     if (current && current.ws === ws) {
       clients.delete(clientId);
-      // لو الـ owner خرج — أول واحد في الروم يبقى owner الجديد
+      // لو الـ owner خرج — أول حد في الروم مش اتـ kick يبقى owner الجديد
       if (meta.ownerId === clientId) {
-        const next = clients.keys().next().value;
+        let next = null;
+        for (const [id] of clients) {
+          if (!meta.kickedIds.has(id)) { next = id; break; }
+        }
         meta.ownerId = next || null;
       }
       if (clients.size === 0) {
+        // احفظ الـ bans قبل ما تمسح الـ meta — عشان لو حد حاول يدخل تاني
+        const currentBans = meta.bannedIds;
+        if (currentBans.size > 0) {
+          roomBans.set(room, currentBans);
+        } else {
+          roomBans.delete(room);
+        }
         rooms.delete(room);
         roomMeta.delete(room);
       } else {
