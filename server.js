@@ -480,12 +480,20 @@ wss.on('connection', (ws, req) => {
         const targetId = msg.targetId;
         const target   = clients.get(targetId);
         if (!target) break;
-        if (target.ws.readyState === WebSocket.OPEN) {
-          target.ws.send(JSON.stringify({ type: 'kicked', reason: 'You have been removed from this room.' }));
-          target.ws.close(1008, 'kicked');
-        }
+        // شيل الـ user من الروم فوراً وابعت presence محدث للكل
         clients.delete(targetId);
         broadcastPresence(room);
+        // بلّغ الـ owner إن الـ kick اتنفذ
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'kick_confirmed', targetId }));
+        }
+        // بلّغ الـ target — delay بسيط عشان الرسالة توصله قبل الـ close
+        if (target.ws.readyState === WebSocket.OPEN) {
+          target.ws.send(JSON.stringify({ type: 'kicked', reason: 'You have been removed from this room.' }));
+          setTimeout(() => {
+            if (target.ws.readyState === WebSocket.OPEN) target.ws.close(1008, 'kicked');
+          }, 300);
+        }
         console.log(`[kick] owner ${clientId} kicked ${targetId} from room ${room}`);
         break;
       }
@@ -497,12 +505,20 @@ wss.on('connection', (ws, req) => {
         meta.bannedIds.add(targetId);
         const target = clients.get(targetId);
         if (target) {
-          if (target.ws.readyState === WebSocket.OPEN) {
-            target.ws.send(JSON.stringify({ type: 'banned', reason: 'You have been banned from this room.' }));
-            target.ws.close(1008, 'banned');
-          }
+          // شيل الـ user من الروم فوراً وابعت presence محدث للكل
           clients.delete(targetId);
           broadcastPresence(room);
+          // بلّغ الـ owner إن الـ ban اتنفذ
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ban_confirmed', targetId }));
+          }
+          // بلّغ الـ target — delay بسيط عشان الرسالة توصله قبل الـ close
+          if (target.ws.readyState === WebSocket.OPEN) {
+            target.ws.send(JSON.stringify({ type: 'banned', reason: 'You have been banned from this room.' }));
+            setTimeout(() => {
+              if (target.ws.readyState === WebSocket.OPEN) target.ws.close(1008, 'banned');
+            }, 300);
+          }
         }
         console.log(`[ban] owner ${clientId} banned ${targetId} from room ${room}`);
         break;
