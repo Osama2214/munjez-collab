@@ -469,6 +469,7 @@ wss.on('connection', (ws, req) => {
           x: msg.x, y: msg.y,
           name: userName, color: userColor,
           tool: msg.tool, penColor: msg.penColor,
+          laserPoints: msg.laserPoints,
         });
         break;
       }
@@ -529,6 +530,11 @@ wss.on('connection', (ws, req) => {
         rooms.delete(room);
         roomMeta.delete(room);
       } else {
+        // Notify remaining peers to remove this user's cursor immediately
+        const leaveMsg = JSON.stringify({ type: 'leave', id: clientId });
+        for (const [, { ws: peerWs }] of clients) {
+          if (peerWs.readyState === WebSocket.OPEN) peerWs.send(leaveMsg);
+        }
         broadcastPresence(room);
       }
     }
