@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 1234;
 
 // ── Room state ────────────────────────────────────────────────────────────────
 // rooms    : Map<roomName, Map<clientId, { ws, user }>>
-// roomMeta : Map<roomName, { ownerId: string, bannedIds: Set<string> }>
+// roomMeta : Map<roomName, { ownerId: string, bannedIds: Set<string>, kickedIds: Set<string> }>
 const rooms    = new Map();
 const roomMeta = new Map();
 
@@ -35,7 +35,7 @@ function getRoomClients(room) {
 }
 
 function getRoomMeta(room) {
-  if (!roomMeta.has(room)) roomMeta.set(room, { ownerId: null, bannedIds: new Set() });
+  if (!roomMeta.has(room)) roomMeta.set(room, { ownerId: null, bannedIds: new Set(), kickedIds: new Set() });
   return roomMeta.get(room);
 }
 
@@ -417,6 +417,16 @@ wss.on('connection', (ws, req) => {
 
   // ── Yjs CRDT connection ────────────────────────────────────────────────────
   if (!isPresence) {
+    // منع الـ kicked/banned users من الـ Yjs connection كمان
+    const meta = getRoomMeta(room);
+    if (meta.bannedIds.has(clientId)) {
+      ws.close(1008, 'banned');
+      return;
+    }
+    if (meta.kickedIds.has(clientId)) {
+      ws.close(1008, 'kicked');
+      return;
+    }
     setupWSConnection(ws, req, { docName: room, gc: true });
     return;
   }
@@ -480,6 +490,8 @@ wss.on('connection', (ws, req) => {
         const targetId = msg.targetId;
         const target   = clients.get(targetId);
         if (!target) break;
+        // سجّل الـ kick عشان نمنع الـ reconnect فوراً
+        meta.kickedIds.add(targetId);
         // شيل الـ user من الروم فوراً وابعت presence محدث للكل
         clients.delete(targetId);
         broadcastPresence(room);
@@ -494,6 +506,10 @@ wss.on('connection', (ws, req) => {
             if (target.ws.readyState === WebSocket.OPEN) target.ws.close(1008, 'kicked');
           }, 300);
         }
+        // اتأكد إن الـ kickedIds بتتمسح بعد 60 ثانية — الـ kick مؤقت
+        setTimeout(() => {
+          meta.kickedIds.delete(targetId);
+        }, 60_000);
         console.log(`[kick] owner ${clientId} kicked ${targetId} from room ${room}`);
         break;
       }
