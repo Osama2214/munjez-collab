@@ -136,7 +136,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     .topbar-btn:hover{background:#6d28d9}
 
     /* ── Board area ── */
-    .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab}
+    .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;background:var(--board-bg,#ffffff)}
     .board-area.grabbing{cursor:grabbing}
     #graph-container{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden}
     #strokes-canvas{position:absolute;top:0;left:0;pointer-events:none}
@@ -191,7 +191,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     <p>Loading board…</p>
   </div>
 
-  <div class="board-area" id="board-area">
+  <div class="board-area" id="board-area" style="--board-bg:${bgColor}">
     <div id="graph-container"></div>
     <canvas id="strokes-canvas"></canvas>
   </div>
