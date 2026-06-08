@@ -228,40 +228,19 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       throw e;
     }
 
-    // ── Render graph XML via maxgraph ──
-    let graph = null;
-    if (boardData.graphXml) {
-      try {
-        const mg = await import('https://cdn.jsdelivr.net/npm/@maxgraph/core@0.23.1/dist/index.min.js');
-        const { Graph, xmlUtils, Codec, ModelXmlSerializer } = mg;
-
-        graphContainer.style.background = BG_COLOR;
-
-        graph = new Graph(graphContainer);
-        graph.setEnabled(false); // read-only
-
-        const doc = xmlUtils.parseXml(boardData.graphXml);
-        const codec = new Codec(doc);
-        codec.decode(doc.documentElement, graph.getDataModel());
-        graph.refresh();
-
-        // fit to view
-        const bounds = graph.getGraphBounds();
-        if (bounds && bounds.width > 0 && bounds.height > 0) {
-          const pad = 60;
-          const sx = (boardArea.clientWidth - pad) / bounds.width;
-          const sy = (boardArea.clientHeight - pad) / bounds.height;
-          const scale = Math.min(sx, sy, 1.5);
-          zoom = scale;
-          panX = (boardArea.clientWidth - bounds.width * scale) / 2 - bounds.x * scale;
-          panY = (boardArea.clientHeight - bounds.height * scale) / 2 - bounds.y * scale;
-        }
-      } catch (e) {
-        console.warn('maxgraph load failed, showing strokes only:', e);
-        graphContainer.style.background = BG_COLOR;
+    // ── Render graph shapes via pre-captured SVG ──
+    graphContainer.style.background = BG_COLOR;
+    if (boardData.graphSvg) {
+      graphContainer.innerHTML = boardData.graphSvg;
+      const svg = graphContainer.querySelector('svg');
+      if (svg) {
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.overflow = 'visible';
       }
-    } else {
-      graphContainer.style.background = BG_COLOR;
     }
 
     // ── Render strokes ──
@@ -335,10 +314,6 @@ function buildViewerHtml(boardId, boardName, bgColor) {
 
     // ── Apply transform ──
     function applyTransform() {
-      if (graph) {
-        const view = graph.getView();
-        view.scaleAndTranslate(zoom, panX / zoom, panY / zoom);
-      }
       graphContainer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
       graphContainer.style.transformOrigin = '0 0';
       drawStrokes();
@@ -731,6 +706,7 @@ const httpServer = http.createServer(async (req, res) => {
       sharedBoards.set(id, {
         board: body.board || {},
         graphXml: body.graphXml || '',
+        graphSvg: body.graphSvg || '',
         strokes: body.strokes || [],
         createdAt: Date.now(),
       });
