@@ -354,43 +354,24 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     window.zoomReset = () => { zoom = 1; panX = 0; panY = 0; applyTransform(); };
 
     // ── Open in app ──
-    // ── Open in App / Download — auto-detect on load ──
-    let hasApp = null; // null = checking, true = installed, false = not installed
-    const btnText = document.getElementById('app-btn-text');
-    const btnIcon = document.getElementById('app-btn-icon');
-    const appBtn = document.getElementById('app-btn');
-
-    function showDownload() {
-      hasApp = false;
-      if (btnText) btnText.textContent = 'Download Munjez';
-      if (btnIcon) btnIcon.innerHTML = '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>';
-    }
-
-    // Auto-detect: try opening a silent deep link, check if focus is lost
-    (function detectApp() {
-      let blurred = false;
-      const onBlur = () => { blurred = true; hasApp = true; };
-      window.addEventListener('blur', onBlur);
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { blurred = true; hasApp = true; } });
-
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = 'munjez://ping';
-      document.body.appendChild(iframe);
-
-      setTimeout(() => {
-        window.removeEventListener('blur', onBlur);
-        try { document.body.removeChild(iframe); } catch {}
-        if (!blurred) showDownload();
-      }, 2500);
-    })();
-
+    // ── Open in App / Download ──
+    let mode = 'open'; // 'open' or 'download'
     window.openInApp = () => {
-      if (hasApp === false) {
+      if (mode === 'download') {
         window.open('https://munjez-website.vercel.app/', '_blank');
         return;
       }
+      // Try deep link — if page stays visible, app is not installed
       window.location.href = 'munjez://import/' + BOARD_ID;
+      setTimeout(() => {
+        if (document.visibilityState !== 'hidden') {
+          mode = 'download';
+          const txt = document.getElementById('app-btn-text');
+          const ico = document.getElementById('app-btn-icon');
+          if (txt) txt.textContent = 'Download Munjez';
+          if (ico) ico.innerHTML = '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>';
+        }
+      }, 2500);
     };
 
     // ── Done loading ──
