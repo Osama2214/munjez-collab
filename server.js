@@ -74,8 +74,323 @@ function broadcastCursor(room, fromId, cursorData) {
   }
 }
 
+// ── Shared boards storage (in-memory) ────────────────────────────────────────
+const sharedBoards = new Map(); // id → { board, graphXml, strokes, createdAt }
+
+function generateShareId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    const MAX = 50 * 1024 * 1024; // 50 MB limit
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX) { req.destroy(); reject(new Error('Payload too large')); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+// ── Viewer HTML builder ──────────────────────────────────────────────────────
+function buildViewerHtml(boardId, boardName, bgColor) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${boardName} — Munjez</title>
+  <link rel="icon" href="/favicon.ico"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg:#070c18;--surface:#0c1223;--card:#101827;--border:#1a2d4a;--primary:#7c3aed;--accent:#a78bfa;--text:#e2e8f0;--muted:#7c8fa6}
+    html,body{width:100%;height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+
+    /* ── Top bar ── */
+    .topbar{
+      position:fixed;top:0;left:0;right:0;z-index:100;
+      display:flex;align-items:center;gap:12px;
+      padding:10px 20px;
+      background:rgba(12,18,35,.85);backdrop-filter:blur(16px);
+      border-bottom:1px solid var(--border);
+    }
+    .topbar-logo{width:28px;height:28px;border-radius:7px}
+    .topbar-name{font-size:14px;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .topbar-badge{font-size:11px;color:var(--muted);background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);border-radius:100px;padding:3px 12px;font-weight:600}
+    .topbar-btn{
+      display:flex;align-items:center;gap:6px;
+      background:var(--primary);color:#fff;border:none;border-radius:8px;
+      padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;
+      transition:background .2s;
+    }
+    .topbar-btn:hover{background:#6d28d9}
+
+    /* ── Board area ── */
+    .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab}
+    .board-area.grabbing{cursor:grabbing}
+    #graph-container{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden}
+    #strokes-canvas{position:absolute;top:0;left:0;pointer-events:none}
+
+    /* ── Loading ── */
+    .loading{
+      position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:50;
+      background:var(--bg);transition:opacity .3s;
+    }
+    .loading.hide{opacity:0;pointer-events:none}
+    .loading .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading p{font-size:13px;color:var(--muted)}
+
+    /* ── Error ── */
+    .error-msg{
+      position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:50;
+    }
+    .error-msg h2{font-size:22px;font-weight:800;color:var(--accent)}
+    .error-msg p{font-size:14px;color:var(--muted)}
+
+    /* ── Zoom controls ── */
+    .zoom-controls{
+      position:fixed;bottom:16px;right:16px;z-index:100;
+      display:flex;gap:6px;align-items:center;
+      background:rgba(12,18,35,.85);backdrop-filter:blur(12px);
+      border:1px solid var(--border);border-radius:10px;padding:4px;
+    }
+    .zoom-btn{
+      width:32px;height:32px;border:none;border-radius:7px;
+      background:transparent;color:var(--text);font-size:16px;font-weight:700;
+      cursor:pointer;display:flex;align-items:center;justify-content:center;
+      transition:background .15s;
+    }
+    .zoom-btn:hover{background:rgba(124,58,237,.2)}
+    .zoom-label{font-size:11px;color:var(--muted);min-width:42px;text-align:center;font-weight:600}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <img class="topbar-logo" src="/icon.webp" alt="Munjez"/>
+    <span class="topbar-name" id="board-name">${boardName.replace(/</g,'&lt;')}</span>
+    <span class="topbar-badge">View Only</span>
+    <button class="topbar-btn" onclick="openInApp()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      Open in App
+    </button>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Loading board…</p>
+  </div>
+
+  <div class="board-area" id="board-area">
+    <div id="graph-container"></div>
+    <canvas id="strokes-canvas"></canvas>
+  </div>
+
+  <div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomOut()">−</button>
+    <span class="zoom-label" id="zoom-label">100%</span>
+    <button class="zoom-btn" onclick="zoomIn()">+</button>
+    <button class="zoom-btn" onclick="zoomReset()" title="Reset">⟲</button>
+  </div>
+
+  <script type="module">
+    const BOARD_ID = ${JSON.stringify(boardId)};
+    const BG_COLOR = ${JSON.stringify(bgColor)};
+
+    // ── State ──
+    let zoom = 1, panX = 0, panY = 0;
+    let boardData = null;
+    let isDragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+
+    const boardArea = document.getElementById('board-area');
+    const graphContainer = document.getElementById('graph-container');
+    const strokesCanvas = document.getElementById('strokes-canvas');
+    const loadingEl = document.getElementById('loading');
+    const zoomLabel = document.getElementById('zoom-label');
+
+    // ── Fetch board data ──
+    try {
+      const resp = await fetch('/api/boards/' + BOARD_ID);
+      if (!resp.ok) throw new Error('Board not found');
+      boardData = await resp.json();
+    } catch (e) {
+      loadingEl.innerHTML = '<div class="error-msg"><h2>Board not found</h2><p>This board may have been removed or the link is invalid.</p></div>';
+      throw e;
+    }
+
+    // ── Render graph XML via maxgraph ──
+    let graph = null;
+    if (boardData.graphXml) {
+      try {
+        const mg = await import('https://cdn.jsdelivr.net/npm/@maxgraph/core@0.23.1/dist/index.min.js');
+        const { Graph, xmlUtils, Codec, ModelXmlSerializer } = mg;
+
+        graphContainer.style.background = BG_COLOR;
+
+        graph = new Graph(graphContainer);
+        graph.setEnabled(false); // read-only
+
+        const doc = xmlUtils.parseXml(boardData.graphXml);
+        const codec = new Codec(doc);
+        codec.decode(doc.documentElement, graph.getDataModel());
+        graph.refresh();
+
+        // fit to view
+        const bounds = graph.getGraphBounds();
+        if (bounds && bounds.width > 0 && bounds.height > 0) {
+          const pad = 60;
+          const sx = (boardArea.clientWidth - pad) / bounds.width;
+          const sy = (boardArea.clientHeight - pad) / bounds.height;
+          const scale = Math.min(sx, sy, 1.5);
+          zoom = scale;
+          panX = (boardArea.clientWidth - bounds.width * scale) / 2 - bounds.x * scale;
+          panY = (boardArea.clientHeight - bounds.height * scale) / 2 - bounds.y * scale;
+        }
+      } catch (e) {
+        console.warn('maxgraph load failed, showing strokes only:', e);
+        graphContainer.style.background = BG_COLOR;
+      }
+    } else {
+      graphContainer.style.background = BG_COLOR;
+    }
+
+    // ── Render strokes ──
+    function resizeCanvas() {
+      strokesCanvas.width = boardArea.clientWidth;
+      strokesCanvas.height = boardArea.clientHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', () => { resizeCanvas(); drawStrokes(); });
+
+    function drawStrokes() {
+      const ctx = strokesCanvas.getContext('2d');
+      if (!ctx || !boardData?.strokes) return;
+      ctx.clearRect(0, 0, strokesCanvas.width, strokesCanvas.height);
+      ctx.save();
+      ctx.translate(panX, panY);
+      ctx.scale(zoom, zoom);
+
+      for (const s of boardData.strokes) {
+        if (s.tool !== 'pen' && s.tool !== 'eraser' && s.tool !== 'line') continue;
+
+        if (s.tool === 'line' && s.points && s.points.length >= 2) {
+          const p1 = s.points[0], p2 = s.points[s.points.length - 1];
+          const dx = p2.x - p1.x, dy = p2.y - p1.y;
+          const angle = Math.atan2(dy, dx);
+          const hw = 12, ha = Math.PI / 6;
+          ctx.save();
+          ctx.strokeStyle = s.color; ctx.fillStyle = s.color;
+          ctx.lineWidth = s.width; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(p2.x, p2.y);
+          ctx.lineTo(p2.x - hw * Math.cos(angle - ha), p2.y - hw * Math.sin(angle - ha));
+          ctx.lineTo(p2.x - hw * Math.cos(angle + ha), p2.y - hw * Math.sin(angle + ha));
+          ctx.closePath(); ctx.fill();
+          ctx.restore();
+          continue;
+        }
+        if (s.tool === 'line') continue;
+
+        ctx.save();
+        ctx.globalAlpha = s.opacity || 1;
+        ctx.strokeStyle = s.color; ctx.fillStyle = s.color;
+        ctx.lineWidth = s.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+        if (s.tool === 'eraser') { ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1; }
+
+        const pt = s.penType;
+        if (pt === 'highlighter') {
+          ctx.globalCompositeOperation = s.tool === 'eraser' ? 'destination-out' : 'multiply';
+          ctx.globalAlpha = (s.opacity || 1) * 0.35;
+        }
+
+        if (!s.points || s.points.length === 0) { ctx.restore(); continue; }
+        if (s.points.length < 2) {
+          ctx.beginPath(); ctx.arc(s.points[0].x, s.points[0].y, s.width / 2, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.beginPath(); ctx.moveTo(s.points[0].x, s.points[0].y);
+          for (let i = 1; i < s.points.length - 1; i++) {
+            ctx.quadraticCurveTo(s.points[i].x, s.points[i].y,
+              (s.points[i].x + s.points[i+1].x) / 2, (s.points[i].y + s.points[i+1].y) / 2);
+          }
+          ctx.lineTo(s.points[s.points.length - 1].x, s.points[s.points.length - 1].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+    drawStrokes();
+
+    // ── Apply transform ──
+    function applyTransform() {
+      if (graph) {
+        const view = graph.getView();
+        view.scaleAndTranslate(zoom, panX / zoom, panY / zoom);
+      }
+      graphContainer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+      graphContainer.style.transformOrigin = '0 0';
+      drawStrokes();
+      zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
+
+    // ── Pan (drag) ──
+    boardArea.addEventListener('pointerdown', (e) => {
+      isDragging = true; dragStartX = e.clientX; dragStartY = e.clientY;
+      panStartX = panX; panStartY = panY;
+      boardArea.classList.add('grabbing');
+      boardArea.setPointerCapture(e.pointerId);
+    });
+    boardArea.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      panX = panStartX + (e.clientX - dragStartX);
+      panY = panStartY + (e.clientY - dragStartY);
+      applyTransform();
+    });
+    boardArea.addEventListener('pointerup', () => { isDragging = false; boardArea.classList.remove('grabbing'); });
+
+    // ── Zoom (wheel) ──
+    boardArea.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = boardArea.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newZoom = Math.max(0.1, Math.min(5, zoom * factor));
+      panX = mx - (mx - panX) * (newZoom / zoom);
+      panY = my - (my - panY) * (newZoom / zoom);
+      zoom = newZoom;
+      applyTransform();
+    }, { passive: false });
+
+    // ── Zoom buttons ──
+    window.zoomIn = () => { zoom = Math.min(5, zoom * 1.2); applyTransform(); };
+    window.zoomOut = () => { zoom = Math.max(0.1, zoom / 1.2); applyTransform(); };
+    window.zoomReset = () => { zoom = 1; panX = 0; panY = 0; applyTransform(); };
+
+    // ── Open in app ──
+    window.openInApp = () => { window.location.href = 'munjez://import/' + BOARD_ID; };
+
+    // ── Done loading ──
+    applyTransform();
+    loadingEl.classList.add('hide');
+  </script>
+</body>
+</html>`;
+}
+
 // ── HTTP server ───────────────────────────────────────────────────────────────
-const httpServer = http.createServer((req, res) => {
+const httpServer = http.createServer(async (req, res) => {
   if (req.url === '/favicon.ico') {
     const iconPath = path.join(__dirname, 'icon.webp');
     fs.readFile(iconPath, (err, data) => {
@@ -400,6 +715,66 @@ const httpServer = http.createServer((req, res) => {
 </html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
+  // ── POST /api/boards — publish a board ────────────────────────────────────
+  } else if (req.method === 'POST' && req.url === '/api/boards') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    try {
+      const body = await parseBody(req);
+      if (!body || (!body.graphXml && (!body.strokes || body.strokes.length === 0))) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Empty board — nothing to share' }));
+        return;
+      }
+      const id = generateShareId();
+      sharedBoards.set(id, {
+        board: body.board || {},
+        graphXml: body.graphXml || '',
+        strokes: body.strokes || [],
+        createdAt: Date.now(),
+      });
+      console.log(`[share] board published: ${id} (${body.board?.name || 'untitled'})`);
+      const baseUrl = `https://${req.headers.host || 'munjez-collab-production.up.railway.app'}`;
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ id, url: `${baseUrl}/view/${id}` }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message || 'Invalid request' }));
+    }
+
+  // ── OPTIONS /api/boards — CORS preflight ─────────────────────────────────
+  } else if (req.method === 'OPTIONS' && req.url === '/api/boards') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.writeHead(204);
+    res.end();
+
+  // ── GET /api/boards/:id — retrieve board data ───────────────────────────
+  } else if (req.method === 'GET' && req.url.startsWith('/api/boards/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const id = req.url.slice('/api/boards/'.length).split('?')[0].trim();
+    const data = sharedBoards.get(id);
+    if (!data) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Board not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data));
+
+  // ── GET /view/:id — web viewer ───────────────────────────────────────────
+  } else if (req.url.startsWith('/view/')) {
+    const id = req.url.slice('/view/'.length).split('?')[0].trim();
+    if (!id) { res.writeHead(400); res.end('Missing board ID'); return; }
+    const data = sharedBoards.get(id);
+    const boardName = data?.board?.name || 'Shared Board';
+    const bgColor = data?.board?.bgColor || '#ffffff';
+    const html = buildViewerHtml(id, boardName, bgColor);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+
   } else {
     res.writeHead(404); res.end();
   }
