@@ -457,10 +457,86 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     // ── Zoom buttons ──
     window.zoomIn = () => { zoom = Math.min(5, zoom * 1.2); applyTransform(); };
     window.zoomOut = () => { zoom = Math.max(0.1, zoom / 1.2); applyTransform(); };
-    window.zoomReset = () => { zoom = 1; panX = 0; panY = 0; applyTransform(); };
+    window.zoomReset = () => { fitToScreen(); };
+
+    // ── Fit content to screen ──
+    function fitToScreen(initial = false) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      // 1. Calculate from SVG shapes
+      const svg = graphContainer.querySelector('svg');
+      if (svg) {
+        const children = svg.querySelectorAll('rect, circle, ellipse, path, image, foreignObject, text');
+        children.forEach(el => {
+          try {
+            const bbox = el.getBBox();
+            if (bbox && (bbox.width > 0 || bbox.height > 0)) {
+              const ctm = el.getCTM();
+              if (ctm) {
+                const points = [
+                  { x: bbox.x, y: bbox.y },
+                  { x: bbox.x + bbox.width, y: bbox.y },
+                  { x: bbox.x, y: bbox.y + bbox.height },
+                  { x: bbox.x + bbox.width, y: bbox.y + bbox.height }
+                ];
+                points.forEach(p => {
+                  const tx = p.x * ctm.a + p.y * ctm.c + ctm.e;
+                  const ty = p.x * ctm.b + p.y * ctm.d + ctm.f;
+                  minX = Math.min(minX, tx);
+                  minY = Math.min(minY, ty);
+                  maxX = Math.max(maxX, tx);
+                  maxY = Math.max(maxY, ty);
+                });
+              } else {
+                minX = Math.min(minX, bbox.x);
+                minY = Math.min(minY, bbox.y);
+                maxX = Math.max(maxX, bbox.x + bbox.width);
+                maxY = Math.max(maxY, bbox.y + bbox.height);
+              }
+            }
+          } catch (e) {}
+        });
+      }
+
+      // 2. Calculate from strokes
+      if (boardData && boardData.strokes) {
+        for (const s of boardData.strokes) {
+          if (!s.points || s.points.length === 0) continue;
+          for (const p of s.points) {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          }
+        }
+      }
+
+      if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
+        zoom = 1;
+        panX = 0;
+        panY = 0;
+      } else {
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        const pad = 40;
+        const availableW = Math.max(100, boardArea.clientWidth - pad * 2);
+        const availableH = Math.max(100, boardArea.clientHeight - pad * 2);
+        
+        let fitZoom = Math.min(availableW / contentWidth, availableH / contentHeight);
+        fitZoom = Math.max(0.1, Math.min(2, fitZoom));
+
+        const centerX = minX + contentWidth / 2;
+        const centerY = minY + contentHeight / 2;
+
+        zoom = fitZoom;
+        panX = boardArea.clientWidth / 2 - centerX * zoom;
+        panY = boardArea.clientHeight / 2 - centerY * zoom;
+      }
+      applyTransform();
+    }
 
     // ── Done loading ──
-    applyTransform();
+    fitToScreen(true);
     loadingEl.classList.add('hide');
   </script>
 </body>
