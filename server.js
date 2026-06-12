@@ -201,16 +201,14 @@ function buildViewerHtml(boardId, boardName, bgColor) {
   <div class="topbar">
     <img class="topbar-logo" src="/icon.webp" alt="Munjez"/>
     <span class="topbar-name" id="board-name">${boardName.replace(/</g,'&lt;')}</span>
-    <div class="topbar-buttons">
-      <button class="topbar-btn topbar-btn-open" id="app-btn" onclick="openInApp()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        <span>Open in App</span>
-      </button>
-      <a class="topbar-btn topbar-btn-download" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>Download Munjez</span>
-      </a>
-    </div>
+    <button class="topbar-btn topbar-btn-open" id="app-btn" onclick="openInApp()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      <span>Open in App</span>
+    </button>
+    <a class="topbar-btn topbar-btn-download" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Download Munjez</span>
+    </a>
   </div>
 
   <div class="loading" id="loading">
