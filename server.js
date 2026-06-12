@@ -302,13 +302,13 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       graphContainer.innerHTML = boardData.graphSvg;
       const svg = graphContainer.querySelector('svg');
       if (svg) {
-        svg.style.width = '100%';
-        svg.style.height = '100%';
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+        svg.removeAttribute('viewBox');
         svg.style.position = 'absolute';
         svg.style.top = '0';
         svg.style.left = '0';
         svg.style.overflow = 'visible';
-
       }
     }
 
