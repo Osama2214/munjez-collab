@@ -180,11 +180,10 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     }
     @keyframes fade-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
     .error-icon{
-      width:72px;height:72px;border-radius:50%;
-      background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2);
-      display:flex;align-items:center;justify-content:center;margin-bottom:20px;
+      margin-bottom:20px;animation:error-bounce 2s ease-in-out infinite;
     }
-    .error-icon svg{color:var(--accent);opacity:.7}
+    @keyframes error-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+    .error-icon svg{color:var(--accent);opacity:.8}
     .error-msg h2{font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px}
     .error-msg p{font-size:13px;color:var(--muted);margin-bottom:24px}
     .error-home{
@@ -269,7 +268,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       if (!resp.ok) throw new Error('Board not found');
       boardData = await resp.json();
     } catch (e) {
-      loadingEl.innerHTML = '<div class="error-msg"><div class="error-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></svg></div><h2>Board not found</h2><p>This board may have been removed or the link is invalid.</p><a class="error-home" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Get Munjez</a></div>';
+      loadingEl.innerHTML = '<div class="error-msg"><div class="error-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg></div><h2>Board not found</h2><p>This board may have been removed or the link is invalid.</p><a class="error-home" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Get Munjez</a></div>';
       throw e;
     }
 
