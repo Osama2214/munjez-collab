@@ -175,10 +175,25 @@ function buildViewerHtml(boardId, boardName, bgColor) {
 
     /* ── Error ── */
     .error-msg{
-      position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:50;
+      position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;z-index:50;
+      animation:fade-in .5s ease both;
     }
-    .error-msg h2{font-size:22px;font-weight:800;color:var(--accent)}
-    .error-msg p{font-size:14px;color:var(--muted)}
+    @keyframes fade-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    .error-icon{
+      width:72px;height:72px;border-radius:50%;
+      background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2);
+      display:flex;align-items:center;justify-content:center;margin-bottom:20px;
+    }
+    .error-icon svg{color:var(--accent);opacity:.7}
+    .error-msg h2{font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px}
+    .error-msg p{font-size:13px;color:var(--muted);margin-bottom:24px}
+    .error-home{
+      display:inline-flex;align-items:center;gap:6px;
+      background:var(--primary);color:#fff;border:none;border-radius:8px;
+      padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;
+      text-decoration:none;transition:background .2s;
+    }
+    .error-home:hover{background:#6d28d9}
 
     /* ── Zoom controls ── */
     .zoom-controls{
@@ -232,6 +247,11 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     const BOARD_ID = ${JSON.stringify(boardId)};
     const BG_COLOR = ${JSON.stringify(bgColor)};
 
+    // ── Open in app (defined early so it works even if fetch fails) ──
+    window.openInApp = () => {
+      window.location.href = 'munjez://import/' + BOARD_ID;
+    };
+
     // ── State ──
     let zoom = 1, panX = 0, panY = 0;
     let boardData = null;
@@ -249,7 +269,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       if (!resp.ok) throw new Error('Board not found');
       boardData = await resp.json();
     } catch (e) {
-      loadingEl.innerHTML = '<div class="error-msg"><h2>Board not found</h2><p>This board may have been removed or the link is invalid.</p></div>';
+      loadingEl.innerHTML = '<div class="error-msg"><div class="error-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></svg></div><h2>Board not found</h2><p>This board may have been removed or the link is invalid.</p><a class="error-home" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Get Munjez</a></div>';
       throw e;
     }
 
@@ -377,11 +397,6 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     window.zoomIn = () => { zoom = Math.min(5, zoom * 1.2); applyTransform(); };
     window.zoomOut = () => { zoom = Math.max(0.1, zoom / 1.2); applyTransform(); };
     window.zoomReset = () => { zoom = 1; panX = 0; panY = 0; applyTransform(); };
-
-    // ── Open in app ──
-    window.openInApp = () => {
-      window.location.href = 'munjez://import/' + BOARD_ID;
-    };
 
     // ── Done loading ──
     applyTransform();
