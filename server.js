@@ -309,23 +309,6 @@ function buildViewerHtml(boardId, boardName, bgColor) {
         svg.style.left = '0';
         svg.style.overflow = 'visible';
 
-        // Auto-fit: center content and scale to fit viewport
-        requestAnimationFrame(() => {
-          try {
-            const bbox = svg.getBBox();
-            if (bbox.width > 0 && bbox.height > 0) {
-              const vw = boardArea.clientWidth;
-              const vh = boardArea.clientHeight;
-              const pad = 60;
-              const scaleX = vw / (bbox.width + pad * 2);
-              const scaleY = vh / (bbox.height + pad * 2);
-              zoom = Math.min(scaleX, scaleY, 1);
-              panX = (vw - bbox.width * zoom) / 2 - bbox.x * zoom;
-              panY = (vh - bbox.height * zoom) / 2 - bbox.y * zoom;
-              applyTransform();
-            }
-          } catch {}
-        });
       }
     }
 
