@@ -302,13 +302,15 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       graphContainer.innerHTML = boardData.graphSvg;
       const svg = graphContainer.querySelector('svg');
       if (svg) {
-        svg.removeAttribute('width');
-        svg.removeAttribute('height');
         svg.removeAttribute('viewBox');
+        svg.style.width = svg.getAttribute('width') ? svg.getAttribute('width') + 'px' : 'auto';
+        svg.style.height = svg.getAttribute('height') ? svg.getAttribute('height') + 'px' : 'auto';
         svg.style.position = 'absolute';
         svg.style.top = '0';
         svg.style.left = '0';
         svg.style.overflow = 'visible';
+        svg.style.maxWidth = 'none';
+        svg.style.maxHeight = 'none';
       }
     }
 
