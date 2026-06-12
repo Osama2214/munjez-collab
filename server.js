@@ -134,6 +134,8 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       transition:background .2s;
     }
     .topbar-btn:hover{background:#6d28d9}
+    .topbar-btn-download{background:transparent;border:1px solid var(--border);color:var(--text);text-decoration:none}
+    .topbar-btn-download:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.4)}
 
     /* ── Board area ── */
     .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;background:var(--board-bg,#ffffff)}
@@ -180,9 +182,13 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     <img class="topbar-logo" src="/icon.webp" alt="Munjez"/>
     <span class="topbar-name" id="board-name">${boardName.replace(/</g,'&lt;')}</span>
     <span class="topbar-badge">View Only</span>
+    <a class="topbar-btn topbar-btn-download" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Download Munjez</span>
+    </a>
     <button class="topbar-btn" id="app-btn" onclick="openInApp()">
-      <svg id="app-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      <span id="app-btn-text">Open in App</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      <span>Open in App</span>
     </button>
   </div>
 
@@ -354,24 +360,8 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     window.zoomReset = () => { zoom = 1; panX = 0; panY = 0; applyTransform(); };
 
     // ── Open in app ──
-    // ── Open in App / Download ──
-    let mode = 'open'; // 'open' or 'download'
     window.openInApp = () => {
-      if (mode === 'download') {
-        window.open('https://munjez-website.vercel.app/', '_blank');
-        return;
-      }
-      // Try deep link — if page stays visible, app is not installed
       window.location.href = 'munjez://import/' + BOARD_ID;
-      setTimeout(() => {
-        if (document.visibilityState !== 'hidden') {
-          mode = 'download';
-          const txt = document.getElementById('app-btn-text');
-          const ico = document.getElementById('app-btn-icon');
-          if (txt) txt.textContent = 'Download Munjez';
-          if (ico) ico.innerHTML = '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>';
-        }
-      }, 2500);
     };
 
     // ── Done loading ──
