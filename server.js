@@ -192,6 +192,8 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;
       text-decoration:none;transition:background .2s;
     }
+    .error-home svg{animation:bounce-dl 1.5s ease-in-out infinite}
+    }
     .error-home:hover{background:#6d28d9}
 
     /* ── Zoom controls ── */
