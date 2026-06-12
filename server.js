@@ -134,8 +134,27 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       transition:background .2s;
     }
     .topbar-btn:hover{background:#6d28d9}
-    .topbar-btn-download{background:transparent;border:1px solid var(--border);color:var(--text);text-decoration:none}
-    .topbar-btn-download:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.4)}
+    .topbar-btn-download{
+      background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(99,102,241,.1));
+      border:1px solid rgba(124,58,237,.4);color:#c4b5fd;text-decoration:none;
+      position:relative;overflow:hidden;
+      box-shadow:0 0 16px rgba(124,58,237,.15),inset 0 1px 0 rgba(255,255,255,.06);
+      transition:all .3s ease;
+    }
+    .topbar-btn-download::before{
+      content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+      background:linear-gradient(90deg,transparent,rgba(167,139,250,.2),transparent);
+      animation:btn-shimmer 2.5s ease-in-out infinite;
+    }
+    @keyframes btn-shimmer{0%{left:-100%}50%,100%{left:100%}}
+    .topbar-btn-download svg{animation:bounce-dl 1.5s ease-in-out infinite}
+    @keyframes bounce-dl{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+    .topbar-btn-download:hover{
+      background:linear-gradient(135deg,rgba(124,58,237,.3),rgba(99,102,241,.2));
+      border-color:rgba(167,139,250,.6);color:#e0d4ff;
+      box-shadow:0 0 24px rgba(124,58,237,.3),0 0 8px rgba(124,58,237,.15),inset 0 1px 0 rgba(255,255,255,.1);
+      transform:translateY(-1px);
+    }
 
     /* ── Board area ── */
     .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;background:var(--board-bg,#ffffff)}
@@ -182,14 +201,14 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     <img class="topbar-logo" src="/icon.webp" alt="Munjez"/>
     <span class="topbar-name" id="board-name">${boardName.replace(/</g,'&lt;')}</span>
     <span class="topbar-badge">View Only</span>
-    <a class="topbar-btn topbar-btn-download" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span>Download Munjez</span>
-    </a>
     <button class="topbar-btn" id="app-btn" onclick="openInApp()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       <span>Open in App</span>
     </button>
+    <a class="topbar-btn topbar-btn-download" href="https://munjez-website.vercel.app/" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Download Munjez</span>
+    </a>
   </div>
 
   <div class="loading" id="loading">
