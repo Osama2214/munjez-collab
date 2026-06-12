@@ -158,7 +158,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     }
 
     /* ── Board area ── */
-    .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;background:var(--board-bg,#ffffff)}
+    .board-area{position:absolute;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;background:var(--board-bg,#ffffff);touch-action:none}
     .board-area.grabbing{cursor:grabbing}
     #graph-container{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden}
     #strokes-canvas{position:absolute;top:0;left:0;pointer-events:none}
@@ -211,6 +211,28 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     }
     .zoom-btn:hover{background:rgba(124,58,237,.2)}
     .zoom-label{font-size:11px;color:var(--muted);min-width:42px;text-align:center;font-weight:600}
+
+    /* ── Mobile responsive ── */
+    @media(max-width:600px){
+      .topbar{padding:8px 12px;gap:8px}
+      .topbar-logo{width:24px;height:24px;border-radius:6px}
+      .topbar-name{font-size:12px}
+      .topbar-btn{padding:6px 10px;font-size:11px;gap:4px;border-radius:6px}
+      .topbar-btn svg{width:12px;height:12px}
+      .board-area{top:42px}
+      .zoom-controls{bottom:10px;right:10px;padding:3px}
+      .zoom-btn{width:28px;height:28px;font-size:14px}
+      .zoom-label{font-size:10px;min-width:36px}
+      .error-msg h2{font-size:17px}
+      .error-msg p{font-size:12px}
+      .error-icon svg{width:36px;height:36px}
+      .error-home{padding:8px 16px;font-size:12px}
+    }
+    @media(max-width:400px){
+      .topbar-btn span{display:none}
+      .topbar-btn{padding:7px 8px}
+      .topbar-btn svg{width:16px;height:16px}
+    }
   </style>
 </head>
 <body>
@@ -380,6 +402,41 @@ function buildViewerHtml(boardId, boardName, bgColor) {
       applyTransform();
     });
     boardArea.addEventListener('pointerup', () => { isDragging = false; boardArea.classList.remove('grabbing'); });
+
+    // ── Pinch-to-zoom (touch) ──
+    let lastTouchDist = 0;
+    let lastTouchMid = { x: 0, y: 0 };
+    boardArea.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        lastTouchDist = Math.hypot(dx, dy);
+        lastTouchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+      }
+    }, { passive: false });
+    boardArea.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (lastTouchDist > 0) {
+          const rect = boardArea.getBoundingClientRect();
+          const mid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+          const mx = mid.x - rect.left, my = mid.y - rect.top;
+          const factor = dist / lastTouchDist;
+          const newZoom = Math.max(0.1, Math.min(5, zoom * factor));
+          panX = mx - (mx - panX) * (newZoom / zoom) + (mid.x - lastTouchMid.x);
+          panY = my - (my - panY) * (newZoom / zoom) + (mid.y - lastTouchMid.y);
+          zoom = newZoom;
+          lastTouchMid = mid;
+          applyTransform();
+        }
+        lastTouchDist = dist;
+      }
+    }, { passive: false });
+    boardArea.addEventListener('touchend', () => { lastTouchDist = 0; });
 
     // ── Zoom (wheel) ──
     boardArea.addEventListener('wheel', (e) => {
