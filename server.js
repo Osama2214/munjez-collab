@@ -127,41 +127,34 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     .topbar-logo{width:28px;height:28px;border-radius:7px}
     .topbar-name{font-size:14px;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .topbar-badge{font-size:11px;color:var(--muted);background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);border-radius:100px;padding:3px 12px;font-weight:600}
-    .topbar-buttons{display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid rgba(124,58,237,.35);box-shadow:0 0 20px rgba(124,58,237,.12)}
+    .topbar-buttons{display:flex;gap:10px}
     .topbar-btn{
       display:flex;align-items:center;gap:6px;
-      border:none;border-radius:0;
-      padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;
+      border:none;border-radius:8px;
+      padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;
       transition:all .25s ease;text-decoration:none;
     }
     .topbar-btn-open{
-      background:linear-gradient(135deg,var(--primary),#6d28d9);color:#fff;
-      position:relative;overflow:hidden;
+      background:var(--primary);color:#fff;
     }
-    .topbar-btn-open::before{
-      content:'';position:absolute;inset:0;
-      background:linear-gradient(135deg,rgba(255,255,255,.12) 0%,transparent 50%);
-      opacity:0;transition:opacity .2s;
-    }
-    .topbar-btn-open:hover{background:linear-gradient(135deg,#8b5cf6,#7c3aed)}
-    .topbar-btn-open:hover::before{opacity:1}
+    .topbar-btn-open:hover{background:#6d28d9}
     .topbar-btn-download{
-      background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(99,102,241,.08));
+      background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);
       color:#c4b5fd;
       position:relative;overflow:hidden;
-      border-left:1px solid rgba(124,58,237,.3);
+      box-shadow:0 0 14px rgba(124,58,237,.1);
     }
     .topbar-btn-download::before{
       content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
-      background:linear-gradient(90deg,transparent,rgba(167,139,250,.18),transparent);
+      background:linear-gradient(90deg,transparent,rgba(167,139,250,.2),transparent);
       animation:btn-shimmer 2.5s ease-in-out infinite;
     }
     @keyframes btn-shimmer{0%{left:-100%}50%,100%{left:100%}}
     .topbar-btn-download svg{animation:bounce-dl 1.5s ease-in-out infinite}
     @keyframes bounce-dl{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
     .topbar-btn-download:hover{
-      background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(99,102,241,.15));
-      color:#e0d4ff;
+      background:rgba(124,58,237,.2);border-color:rgba(167,139,250,.5);color:#e0d4ff;
+      box-shadow:0 0 20px rgba(124,58,237,.2);
     }
 
     /* ── Board area ── */
