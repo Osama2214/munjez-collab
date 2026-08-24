@@ -8,6 +8,7 @@
  *   • Owner-based kick (temporary) and ban (room-scoped, until server restart)
  */
 
+const crypto = require('crypto');
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
@@ -22,6 +23,85 @@ try {
 }
 
 const PORT = process.env.PORT || 1234;
+
+
+// ── Who is connecting ────────────────────────────────────────────────────────
+// The identity a connection gets is decided here and nowhere else.
+//
+// It used to be whatever the client put in ?clientId=, which the server then trusted for
+// ownership and for bans. Since every participant is told every other participant's id in the
+// presence broadcast, anyone in a room could reconnect claiming the owner's id, displace them,
+// and start removing people. Bans were no better: change the string, walk back in.
+//
+// Signed-in users are now identified by their Firebase uid, taken from a token this server
+// verifies itself. Everyone else gets a random id the server issues, which they cannot choose.
+// That alone makes impersonation impossible; the uid additionally gives bans something stable
+// to hold on to between sessions.
+
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'munjez-358d2';
+const GOOGLE_CERTS_URL =
+  'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+
+let certCache = { keys: null, expiresAt: 0 };
+
+async function getGoogleCerts() {
+  if (certCache.keys && Date.now() < certCache.expiresAt) return certCache.keys;
+  const res = await fetch(GOOGLE_CERTS_URL);
+  if (!res.ok) throw new Error('cert fetch failed: ' + res.status);
+  const keys = await res.json();
+  // Google states how long these may be held in the response itself.
+  const maxAge = /max-age=(\d+)/.exec(res.headers.get('cache-control') || '');
+  const ttl = maxAge ? Number(maxAge[1]) * 1000 : 60 * 60 * 1000;
+  certCache = { keys, expiresAt: Date.now() + ttl };
+  return keys;
+}
+
+function decodeSegment(segment) {
+  return JSON.parse(Buffer.from(segment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+}
+
+/** Returns the uid for a valid Firebase ID token, or null. Never throws. */
+async function verifyFirebaseIdToken(token) {
+  try {
+    if (typeof token !== 'string' || token.length < 40 || token.length > 8000) return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const header = decodeSegment(parts[0]);
+    if (header.alg !== 'RS256' || !header.kid) return null;
+
+    const certs = await getGoogleCerts();
+    const cert = certs[header.kid];
+    if (!cert) return null;
+
+    const publicKey = crypto.createPublicKey(cert);
+    const ok = crypto
+      .createVerify('RSA-SHA256')
+      .update(parts[0] + '.' + parts[1])
+      .verify(publicKey, Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+    if (!ok) return null;
+
+    const claims = decodeSegment(parts[1]);
+    const now = Math.floor(Date.now() / 1000);
+    const skew = 60; // tolerate a little clock drift either way
+
+    if (claims.aud !== FIREBASE_PROJECT_ID) return null;
+    if (claims.iss !== 'https://securetoken.google.com/' + FIREBASE_PROJECT_ID) return null;
+    if (typeof claims.exp !== 'number' || claims.exp + skew < now) return null;
+    if (typeof claims.iat !== 'number' || claims.iat - skew > now) return null;
+    if (typeof claims.sub !== 'string' || !claims.sub) return null;
+
+    return claims.sub;
+  } catch (e) {
+    console.warn('[auth] token rejected:', e.message);
+    return null;
+  }
+}
+
+/** A server-issued id for a connection that did not present a usable token. */
+function anonymousId() {
+  return 'g_' + crypto.randomBytes(9).toString('base64url');
+}
 
 // ── Room state ────────────────────────────────────────────────────────────────
 // rooms      : Map<roomName, Map<clientId, { ws, user }>>
@@ -57,13 +137,15 @@ function broadcastPresence(room) {
 }
 
 // بيبعت presence للكل بما فيهم الـ sender نفسه (للـ snapshot الأولي)
-function sendPresenceTo(ws, room) {
+function sendPresenceTo(ws, room, selfId) {
   const clients = getRoomClients(room);
   const meta    = getRoomMeta(room);
   const users   = [];
   for (const [id, { user }] of clients) users.push({ id, ...user, isOwner: id === meta.ownerId });
   if (ws.readyState === WebSocket.OPEN)
-    ws.send(JSON.stringify({ type: 'presence', users, ownerId: meta.ownerId }));
+    // selfId tells the client which of these is it. It can no longer work that out on its own,
+    // because it no longer chooses its own id.
+    ws.send(JSON.stringify({ type: 'presence', users, ownerId: meta.ownerId, selfId }));
 }
 
 function broadcastCursor(room, fromId, cursorData) {
@@ -77,8 +159,40 @@ function broadcastCursor(room, fromId, cursorData) {
 // ── Shared boards storage (in-memory) ────────────────────────────────────────
 const sharedBoards = new Map(); // id → { board, graphXml, strokes, createdAt }
 
+// Every published board keeps its full contents — graph, SVG and strokes — resident for the
+// life of the process, and nothing ever removed them. createdAt was already being recorded but
+// never read. These live in memory only, so a deploy or restart clears them regardless; an
+// expiry simply stops one long-lived process from growing without limit.
+const SHARE_TTL_MS = Number(process.env.SHARE_TTL_MS || 7 * 24 * 60 * 60 * 1000);
+const SHARE_SWEEP_MS = 60 * 60 * 1000;
+const MAX_SHARED_BOARDS = Number(process.env.MAX_SHARED_BOARDS || 5000);
+
+function sweepSharedBoards() {
+  const cutoff = Date.now() - SHARE_TTL_MS;
+  let removed = 0;
+  for (const [id, entry] of sharedBoards) {
+    if ((entry.createdAt || 0) < cutoff) { sharedBoards.delete(id); removed++; }
+  }
+  // Backstop for a burst that arrives faster than the TTL can retire: drop oldest first.
+  if (sharedBoards.size > MAX_SHARED_BOARDS) {
+    const byAge = [...sharedBoards.entries()].sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+    for (const [id] of byAge.slice(0, sharedBoards.size - MAX_SHARED_BOARDS)) {
+      sharedBoards.delete(id); removed++;
+    }
+  }
+  if (removed) console.log(`[share] retired ${removed} board(s); ${sharedBoards.size} held`);
+}
+
+setInterval(sweepSharedBoards, SHARE_SWEEP_MS).unref();
+
 function generateShareId() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  // This id is the only thing standing between a shared board and anyone on the internet:
+  // /view/:id looks it up and serves the board, with no other check. Math.random is a plain
+  // PRNG -- publish a handful of boards of your own and V8's internal state can be recovered
+  // from the ids it hands back, after which everyone else's are predictable. The timestamp
+  // half gave away roughly when a board was shared on top of that.
+  // 12 random bytes, URL-safe, ~72 bits.
+  return crypto.randomBytes(12).toString('base64url');
 }
 
 function parseBody(req) {
@@ -100,13 +214,53 @@ function parseBody(req) {
 }
 
 // ── Viewer HTML builder ──────────────────────────────────────────────────────
+// ── Escaping for the public viewer ───────────────────────────────────────────
+// Everything a shared board carries is attacker-supplied: POST /api/boards is open to anyone,
+// takes no credentials, and stores body.board exactly as it arrives. Whatever it holds is then
+// served from this origin to whoever opens the share link, so it has to be neutralised on the
+// way out.
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// JSON.stringify leaves '/' alone, so a value containing </script> closes the block it sits in
+// and everything after it is parsed as markup.
+function jsonForScript(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+// The colour lands in a CSS custom property, where escaping quotes stops it breaking out of the
+// attribute but not out of the declaration. Only things that actually look like colours pass.
+const COLOR_PATTERN = /^(#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.,\s%/]+\)|hsla?\(\s*[\d.,\s%/deg]+\)|[a-zA-Z]{3,20})$/;
+
+function safeColor(value, fallback = '#ffffff') {
+  const candidate = String(value == null ? '' : value).trim();
+  return COLOR_PATTERN.test(candidate) ? candidate : fallback;
+}
+
+const MAX_BOARD_NAME = 120;
+
+function safeBoardName(value, fallback = 'Shared Board') {
+  const name = String(value == null ? '' : value).trim();
+  if (!name) return fallback;
+  return name.length > MAX_BOARD_NAME ? name.slice(0, MAX_BOARD_NAME) + '\u2026' : name;
+}
+
 function buildViewerHtml(boardId, boardName, bgColor) {
+  const name  = safeBoardName(boardName);
+  const color = safeColor(bgColor);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${boardName} — Munjez</title>
+  <title>${escapeHtml(name)} — Munjez</title>
   <link rel="icon" href="/favicon.ico"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -238,7 +392,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
 <body>
   <div class="topbar">
     <img class="topbar-logo" src="/icon.webp" alt="Munjez"/>
-    <span class="topbar-name" id="board-name">${boardName.replace(/</g,'&lt;')}</span>
+    <span class="topbar-name" id="board-name">${escapeHtml(name)}</span>
     <button class="topbar-btn topbar-btn-open" id="app-btn" onclick="openInApp()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       <span>Open in App</span>
@@ -254,7 +408,7 @@ function buildViewerHtml(boardId, boardName, bgColor) {
     <p>Loading board…</p>
   </div>
 
-  <div class="board-area" id="board-area" style="--board-bg:${bgColor}">
+  <div class="board-area" id="board-area" style="--board-bg:${escapeHtml(color)}">
     <div id="graph-container"></div>
     <canvas id="strokes-canvas"></canvas>
   </div>
@@ -267,8 +421,8 @@ function buildViewerHtml(boardId, boardName, bgColor) {
   </div>
 
   <script type="module">
-    const BOARD_ID = ${JSON.stringify(boardId)};
-    const BG_COLOR = ${JSON.stringify(bgColor)};
+    const BOARD_ID = ${jsonForScript(boardId)};
+    const BG_COLOR = ${jsonForScript(color)};
 
     // ── Open in app (defined early so it works even if fetch fails) ──
     window.openInApp = () => {
@@ -938,7 +1092,7 @@ const httpServer = http.createServer(async (req, res) => {
 // ── WebSocket server ──────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ server: httpServer });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   const url        = new URL(req.url, 'ws://localhost');
   const isPresence = url.pathname.startsWith('/presence/');
 
@@ -947,9 +1101,16 @@ wss.on('connection', (ws, req) => {
     : url.pathname.replace(/^\/+/, '') || 'default';
 
   const params    = url.searchParams;
-  const clientId  = params.get('clientId') || Math.random().toString(36).slice(2);
   const userName  = (params.get('name')  || 'Anonymous').slice(0, 40);
   const userColor = (params.get('color') || '#6366f1').slice(0, 20);
+
+  // Identity comes from a verified token where one is offered, and from the server otherwise.
+  // The ?clientId= the client sends is no longer consulted for anything that matters.
+  const uid = await verifyFirebaseIdToken(params.get('token'));
+  const clientId = uid || anonymousId();
+  const isVerified = Boolean(uid);
+
+  if (ws.readyState !== WebSocket.OPEN) return; // closed while the token was being checked
 
   // ── Yjs CRDT connection ────────────────────────────────────────────────────
   if (!isPresence) {
@@ -1002,11 +1163,11 @@ wss.on('connection', (ws, req) => {
 
   clients.set(clientId, {
     ws,
-    user: { name: userName, color: userColor, cursor: null, joinedAt: Date.now() },
+    user: { name: userName, color: userColor, cursor: null, joinedAt: Date.now(), verified: isVerified },
   });
 
-  // ابعت الـ snapshot الكامل للجديد (بما فيه ownerId)
-  sendPresenceTo(ws, room);
+  // ابعت الـ snapshot الكامل للجديد (بما فيه ownerId و selfId)
+  sendPresenceTo(ws, room, clientId);
   // وابعت للباقيين إنه انضم
   broadcastPresence(room);
 
@@ -1066,9 +1227,15 @@ wss.on('connection', (ws, req) => {
         if (clientId !== meta.ownerId) break; // بس الـ owner
         const targetId = msg.targetId;
         meta.bannedIds.add(targetId);
-        // احفظ الـ ban في الـ persistent store فوراً
-        if (!roomBans.has(room)) roomBans.set(room, new Set());
-        roomBans.get(room).add(targetId);
+        // Only a signed-in target keeps its id between sessions, so only that ban is worth
+        // storing. A guest is issued a fresh id on every connection: remembering one would
+        // grow the ban list forever while stopping nobody. Theirs holds for as long as the
+        // room does, which is as much as an anonymous identity can honestly support.
+        const targetIsVerified = !String(targetId).startsWith('g_');
+        if (targetIsVerified) {
+          if (!roomBans.has(room)) roomBans.set(room, new Set());
+          roomBans.get(room).add(targetId);
+        }
         const target = clients.get(targetId);
         if (target) {
           // شيل الـ user من الروم فوراً وابعت presence محدث للكل
@@ -1086,7 +1253,8 @@ wss.on('connection', (ws, req) => {
             }, 300);
           }
         }
-        console.log(`[ban] owner ${clientId} banned ${targetId} from room ${room}`);
+        console.log(`[ban] owner ${clientId} banned ${targetId} from room ${room}` +
+          (targetIsVerified ? ' (persistent)' : ' (this room only — anonymous)'));
         break;
       }
 
